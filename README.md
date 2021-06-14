@@ -3,4 +3,4 @@ This is a script I wrote a while back for matching bands in an attempt to try an
 
 Documentation/screenshots/examples TBD
 
-I put it on my main account for now so it's easier to find, but if not much happens here then it'll eventually be moved to [the graveyard](https://github.com/exphp-share/).
+I put it on my main account for now as I actively work on it, but if not much happens here then it'll eventually be moved to [the graveyard](https://github.com/exphp-share/).
