@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+
+from clint.textui import colored, puts
+from collections import defaultdict
+from functools import reduce
+import numpy as np
+import json
+
+def main():
+	import argparse
+	parser = argparse.ArgumentParser(
+		description='Human-readible dot products between two eigenvector files'
+			' produced by eigenvectors-alt')
+
+	parser.add_argument('AFILE', type=str)
+	parser.add_argument('BFILE', type=str)
+	parser.add_argument('-t', '--threshold', type=float, default=1e-3,
+		help='display threshold. (the dot products form a fairly'
+		' sparse matrix so most elements are not worth showing)')
+	parser.add_argument('-0', action='store_true', dest='zero', help='use zero-based indexing')
+	group = parser.add_mutually_exclusive_group()
+	group.add_argument('-a', action='store_true', help='sort by a index (default)')
+	group.add_argument('-b', action='store_true', help='sort by b index')
+	parser.add_argument('-s', '--subspaces', action='store_true', help='subspaces mode')
+	parser.add_argument('--find-permutation', action='store_true',
+		help='print permutation of the BFILE bands which most closely'
+		' block diagonalizes the dot products.  (given as 1-based indices'
+		' of the original bands)')
+	args = parser.parse_args()
+
+	if not (args.a or args.b):
+		args.a = True
+
+	A = json.load(open(args.AFILE))
+	B = json.load(open(args.BFILE))
+
+	if len(A[0]) != len(B[0]):
+		parser.error('{} and {} have incompatible dimension'.format(args.AFILE, args.BFILE))
+
+	fmtlen = len(str(len(A)))
+	fmt = "{{:{}}} {{:{}}}   {{:<22}}  {{:8}}°".format(fmtlen, fmtlen)
+
+	def getdot(a,b):
+		ar,ai = a.transpose()
+		br,bi = b.transpose()
+
+		dot = (ar - 1j*ai) @ (br + 1j*bi)
+		if np.absolute(dot) < args.threshold:
+			return (0, None)
+		return (np.absolute(dot), np.angle(dot))
+
+	def showitem(ai,a,bi,b):
+		abs,arg = getdot(a,b)
+		if abs:
+			print(fmt.format(ai, bi, abs, int(round(np.degrees(arg)))))
+
+	mode = 'normal'
+	if args.subspaces: mode = 'subspaces'
+	if args.find_permutation: mode = 'permutation'
+
+	# FIXME it's stupid that we internally use 1-based indices,
+	#       since we end up having to correct for it in several places.
+	#       This variable ought to be the only thing that even
+	#        suggests the *possibility* of one-based indices.
+	idx_display_offset = -1 if args.zero else 0
+
+	@iife
+	def sparse_abs():
+		result = defaultdict(dict)
+		for ai,a in enumerate(np.array(A), start=1):
+			for bi,b in enumerate(np.array(B), start=1):
+				abs,arg = getdot(a,b)
+				if abs:
+					result[ai][bi] = abs
+		return result
+
+	# FIXME: ignores -0 flag
+	if mode == 'normal':
+		if args.a:
+			for ai,a in enumerate(np.array(A), start=1):
+				for bi,b in enumerate(np.array(B), start=1):
+					showitem(ai,a,bi,b)
+		elif args.b:
+			for bi,b in enumerate(np.array(B), start=1):
+				for ai,a in enumerate(np.array(A), start=1):
+					showitem(ai,a,bi,b)
+
+	# FIXME: ignores -0 flag
+	elif mode == 'subspaces':
+
+		pairs = subspaces(sparse_abs)
+		if args.b:
+			pairs = sorted(pairs, key=lambda pair: min(pair[1]))
+
+		for aset, bset in pairs:
+			f = lambda s: lambda *a, **k: s.format(*a, **k)
+			h_fmt = " ".join(["{:5}"] + ["{:^5}"]*len(bset))
+			m_fmts = [f("{:5}")] + [fmt_color_by_value("{:<0.3f}")]*len(bset)
+			print(h_fmt.format(" ", *bset))
+			for i in aset:
+				to_print = [i] + [sparse_abs[i].get(k,0) for k in bset]
+				print(*(f(x) for (f,x) in zip(m_fmts, to_print)))
+			print()
+
+	elif mode == 'permutation':
+		perm = find_permutation(sparse_abs)
+		print([x + idx_display_offset for x in perm])
+
+	else: assert False, "complete switch"
+
+def fmt_color_by_value(s):
+	return lambda x: color_by_value(x)(s.format(x))
+
+def color_by_value(x):
+	from clint.textui import colored
+	x = abs(float(x))
+	if x < 0.30: return colored.blue
+	if x < 0.60: return colored.cyan
+	if x < 0.80: return colored.yellow
+	return colored.white
+
+# returns [(aset, bset)] where aset and bset are a set of indices from
+#    each file that have nonzero dot products
+def subspaces(sparse_abs):
+	sparse_sets = {k:set(v) for (k,v) in sparse_abs.items()}
+	unique_b_sets = group_into_non_overlapping_sets(sparse_sets.values())
+
+	@iife
+	@thru(sorted, key=lambda pair: min(pair[0]))
+	def pairs():
+		for bbs in unique_b_sets:
+			aas = [a for a in sparse_sets if sparse_sets[a] & bbs]
+			yield (sorted(aas), sorted(bbs))
+
+	return pairs
+
+def group_into_non_overlapping_sets(sets):
+	sets = [frozenset(s) for s in sets]
+
+	@thru(set)
+	def step(sets):
+		for s in sets:
+			yield reduce(frozenset.union, [x for x in sets if x & s], frozenset())
+
+	return frozenset(fixpoint(sets, step))
+
+# returns [abset] where abset is a set of contiguous indices representing
+#  a block diagonal block in the dot product matrix
+def block_slices(sparse_abs):
+	pairs = subspaces(sparse_abs)
+	sets = [  frozenset(range(min(aas), max(aas)+1))
+	        | frozenset(range(min(bbs), max(bbs)+1))
+	        for (aas, bbs) in pairs]
+	sets = group_into_non_overlapping_sets(sets)
+	sets = sorted(sets, key=min)
+	return [slice(min(x), max(x)+1) for x in sets]
+
+def thru(outer, *a1, **k1):
+	return lambda f: lambda *a2, **k2: outer(f(*a2, **k2), *a1, **k1)
+def iife(f): return f()
+
+def group_keys_by_matching_value(d):
+	inv = defaultdict(set)
+	for (k,v) in d.items():
+		inv[v].add(k)
+	return [(ks,v) for v in inv]
+
+def find_permutation(sparse_abs):
+	import scipy.sparse as sparse
+
+	n = len(sparse_abs)
+	sparse_abs = {s-1:{t-1:v for (t,v) in vs.items()} for (s,vs) in sparse_abs.items()}
+
+	def please_coo_matrix(triples):
+		i,j,x = zip(*triples)
+		return list(x),(list(i),list(j)) # REALLY, scipy, a nested tuple of arrays?
+
+	def ijvpairs():
+		for i in range(n):
+			for j in range(n):
+				v = sparse_abs[i].get(j, 0)
+				if v:
+					yield (i, j, v)
+	mat = sparse.coo_matrix(please_coo_matrix(ijvpairs())).tocsc()
+
+	perm = np.arange(len(sparse_abs))
+
+	# permute to optimize an objective function within each block subspace
+	for slc in block_slices(sparse_abs):
+		block = mat[slc,slc]
+		# surprise surprise scipy we actually want elementwise multiplication
+		block = np.array(block.todense().tolist())
+
+		size = block.shape[0]
+		weights = (np.arange(size)[:,None] - np.arange(size)[None,:])**2
+
+		objective = lambda block: (block * weights).sum()
+
+		def step(data):
+			block,perm = data
+			block,perm = block.arr, perm.arr
+			bestBlock,bestPerm,bestValue = block,perm,None
+
+			# greedily perform permutations
+			for i in range(size):
+				for j in range(size):
+					block, perm = bestBlock.copy(), bestPerm.copy()
+					block[:,[i,j]] = block[:,[j,i]]
+					perm[[i,j]] = perm[[j,i]]
+
+					if (bestValue is None) or objective(block) < bestValue:
+						bestBlock = block.copy()
+						bestValue = objective(block)
+						bestPerm  = perm.copy()
+
+			return CompareAsBool(bestBlock),CompareAsBool(bestPerm)
+
+		_,out = fixpoint((CompareAsBool(block), CompareAsBool(perm[slc])), step)
+		perm[slc] = out.arr
+
+	# ayeayeaye
+	return [x+1 for x in perm]
+
+# ffs numpy
+class CompareAsBool:
+	def __init__(self, arr): self.arr = arr
+	def __eq__(self, other): return (self.arr == other.arr).all()
+
+def fixpoint(x, f):
+	while True:
+		next = f(x)
+		if next == x:
+			return x
+		x = next
+
+main()
