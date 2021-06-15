@@ -171,6 +171,9 @@ def group_into_non_overlapping_sets(sets):
 
 # returns [abset] where abset is a set of contiguous indices representing
 #  a block diagonal block in the dot product matrix
+#
+# Compared to 'subspaces', this is less informative and produces larger subspaces.  It exists as a
+# crutch for code that is not yet equipped to deal with the added complexity of non-contiguous subspaces.
 def block_slices(sparse_abs):
     pairs = subspaces(sparse_abs)
     sets = [  frozenset(range(min(aas), max(aas)+1))
@@ -195,9 +198,9 @@ def find_permutation(sparse_dots):
     n = len(sparse_dots)
     sparse_abs = {s: {t: abs(v) for (t, v) in vs.items()} for (s, vs) in sparse_dots.items()}
 
-    def please_coo_matrix(triples):
-        i,j,x = zip(*triples)
-        return list(x), (list(i), list(j)) # REALLY, scipy, a nested tuple of arrays?
+    def coo_matrix_from_triples(triples):
+        i, j, x = zip(*ijvpairs())
+        return sparse.coo_matrix((list(x), (list(i), list(j))))
 
     def ijvpairs():
         for i in range(n):
@@ -205,7 +208,7 @@ def find_permutation(sparse_dots):
                 v = sparse_abs[i].get(j, 0)
                 if v:
                     yield (i, j, v)
-    mat = sparse.coo_matrix(please_coo_matrix(ijvpairs())).tocsc()
+    mat = coo_matrix_from_triples(ijvpairs()).tocsc()
 
     perm = np.arange(len(sparse_abs))
 
@@ -220,14 +223,16 @@ def find_permutation(sparse_dots):
 
         objective = lambda block: (block * weights).sum()
 
+        # a function that tries swapping each pair of indices once, greedily accepting any
+        # changes that reduce the objective function
         def step(data):
             block, perm = data
             block, perm = block.arr, perm.arr
-            bestBlock, bestPerm, bestValue = block, perm, None
+            bestBlock, bestPerm, bestValue = block, perm, objective(block)
 
-            # greedily perform permutations
             for i in range(size):
                 for j in range(size):
+                    if i == j: continue
                     block, perm = bestBlock.copy(), bestPerm.copy()
                     block[:,[i,j]] = block[:,[j,i]]
                     perm[[i,j]] = perm[[j,i]]
@@ -239,7 +244,8 @@ def find_permutation(sparse_dots):
 
             return CompareAsBool(bestBlock), CompareAsBool(bestPerm)
 
-        _,out = fixpoint((CompareAsBool(block), CompareAsBool(perm[slc])), step)
+        # now we just have to repeatedly apply that function until it stops producing any changes
+        _, out = fixpoint((CompareAsBool(block), CompareAsBool(perm[slc])), step)
         perm[slc] = out.arr
 
     return perm
