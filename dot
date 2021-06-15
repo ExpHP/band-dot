@@ -103,13 +103,13 @@ def main():
             pairs = sorted(pairs, key=lambda pair: min(pair[1]))
 
         for aset, bset in pairs:
-            f = lambda s: lambda *a, **k: s.format(*a, **k)
-            h_fmt = " ".join(["{:5}"] + ["{:^5}"]*len(bset))
-            m_fmts = [f("{:5}")] + [fmt_color_by_value("{:<0.3f}")]*len(bset)
-            print(h_fmt.format(" ", *bset))
+            fmt_nocolor = lambda s: lambda *a, **k: s.format(*a, **k)
+            header_fmt = " ".join(["{:5}"] + ["{:^5}"] * len(bset))
+            body_fmts = [fmt_nocolor("{:5}")] + [fmt_color_by_value("{:<0.3f}")] * len(bset)
+            print(header_fmt.format(" ", *bset))
             for i in aset:
-                to_print = [i] + [sparse_abs[i].get(k,0) for k in bset]
-                print(*(f(x) for (f,x) in zip(m_fmts, to_print)))
+                to_print = [i] + [sparse_abs[i].get(k, 0)**2 for k in bset]
+                print(*(f(x) for (f, x) in zip(body_fmts, to_print)))
             print()
 
     elif mode == 'permutation':
