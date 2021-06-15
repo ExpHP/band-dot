@@ -56,43 +56,43 @@ def main():
             return 0
         return dot
 
-    def showitem(ai, a, bi, b):
-        dot = getdot(a,b)
-        if dot:
-            print(fmt.format(ai, bi, abs(dot), int(round(np.degrees(np.angle(dot))))))
-
     mode = 'normal'
     if args.subspaces: mode = 'subspaces'
     if args.find_permutation: mode = 'permutation'
 
-    # FIXME it's stupid that we internally use 1-based indices,
-    #       since we end up having to correct for it in several places.
-    #       This variable ought to be the only thing that even
-    #        suggests the *possibility* of one-based indices.
-    idx_display_offset = -1 if args.zero else 0
+    idx_display_offset = 0 if args.zero else 1
 
     def sparse_dots():
         result = defaultdict(dict)
-        for ai,a in enumerate(np.array(A), start=1):
-            for bi,b in enumerate(np.array(B), start=1):
+        for ai,a in enumerate(np.array(A)):
+            for bi,b in enumerate(np.array(B)):
                 dot = getdot(a, b)
                 if dot:
                     result[ai][bi] = abs(dot)
         return result
     sparse_dots = sparse_dots()
 
-    # FIXME: ignores -0 flag
     if mode == 'normal':
-        if args.a:
-            for ai,a in enumerate(np.array(A), start=1):
-                for bi,b in enumerate(np.array(B), start=1):
-                    showitem(ai,a,bi,b)
-        elif args.b:
-            for bi,b in enumerate(np.array(B), start=1):
-                for ai,a in enumerate(np.array(A), start=1):
-                    showitem(ai,a,bi,b)
+        def showitem(ai, bi):
+            dot = sparse_dots[ai].get(bi, 0)
+            if dot:
+                print(fmt.format(
+                    ai + idx_display_offset,
+                    bi + idx_display_offset,
+                    abs(dot),
+                    int(round(np.degrees(np.angle(dot))))),
+                )
 
-    # FIXME: ignores -0 flag
+        if args.a:
+            for ai in range(len(A)):
+                for bi in range(len(B)):
+                    showitem(ai, bi)
+        elif args.b:
+            for bi in range(len(B)):
+                for ai in range(len(A)):
+                    showitem(ai, bi)
+        else: assert False, 'complete switch'
+
     elif mode == 'subspaces':
 
         pairs = subspaces(sparse_dots)
@@ -103,9 +103,9 @@ def main():
             fmt_nocolor = lambda s: lambda *a, **k: s.format(*a, **k)
             header_fmt = " ".join(["{:5}"] + ["{:^5}"] * len(bset))
             body_fmts = [fmt_nocolor("{:5}")] + [fmt_color_by_value("{:<0.3f}")] * len(bset)
-            print(header_fmt.format(" ", *bset))
-            for i in aset:
-                to_print = [i] + [abs(sparse_dots[i].get(k, 0))**2 for k in bset]
+            print(header_fmt.format(" ", *[ib + idx_display_offset for ib in bset]))
+            for ia in aset:
+                to_print = [ia + idx_display_offset] + [abs(sparse_dots[ia].get(ib, 0))**2 for ib in bset]
                 print(*(f(x) for (f, x) in zip(body_fmts, to_print)))
             print()
 
@@ -193,7 +193,7 @@ def find_permutation(sparse_dots):
     import scipy.sparse as sparse
 
     n = len(sparse_dots)
-    sparse_abs = {s-1: {t-1: abs(v) for (t, v) in vs.items()} for (s, vs) in sparse_dots.items()}
+    sparse_abs = {s: {t: abs(v) for (t, v) in vs.items()} for (s, vs) in sparse_dots.items()}
 
     def please_coo_matrix(triples):
         i,j,x = zip(*triples)
@@ -242,8 +242,7 @@ def find_permutation(sparse_dots):
         _,out = fixpoint((CompareAsBool(block), CompareAsBool(perm[slc])), step)
         perm[slc] = out.arr
 
-    # ayeayeaye
-    return [x+1 for x in perm]
+    return perm
 
 # ffs numpy
 class CompareAsBool:
