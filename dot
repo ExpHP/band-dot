@@ -71,7 +71,6 @@ def main():
     #        suggests the *possibility* of one-based indices.
     idx_display_offset = -1 if args.zero else 0
 
-    @iife
     def sparse_dots():
         result = defaultdict(dict)
         for ai,a in enumerate(np.array(A), start=1):
@@ -80,6 +79,7 @@ def main():
                 if dot:
                     result[ai][bi] = abs(dot)
         return result
+    sparse_dots = sparse_dots()
 
     # FIXME: ignores -0 flag
     if mode == 'normal':
@@ -151,14 +151,13 @@ def subspaces(sparse_dots):
     sparse_sets = {k:set(v) for (k,v) in sparse_dots.items()}
     unique_b_sets = group_into_non_overlapping_sets(sparse_sets.values())
 
-    @iife
     @thru(sorted, key=lambda pair: min(pair[0]))
     def pairs():
         for bbs in unique_b_sets:
             aas = [a for a in sparse_sets if sparse_sets[a] & bbs]
             yield (sorted(aas), sorted(bbs))
 
-    return pairs
+    return pairs()
 
 def group_into_non_overlapping_sets(sets):
     sets = [frozenset(s) for s in sets]
@@ -183,7 +182,6 @@ def block_slices(sparse_abs):
 
 def thru(outer, *a1, **k1):
     return lambda f: lambda *a2, **k2: outer(f(*a2, **k2), *a1, **k1)
-def iife(f): return f()
 
 def group_keys_by_matching_value(d):
     inv = defaultdict(set)
