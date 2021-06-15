@@ -40,8 +40,8 @@ def main():
     if not (args.a or args.b):
         args.a = True
 
-    A = json.load(open(args.AFILE))
-    B = json.load(open(args.BFILE))
+    A = read_eigenvectors(args.AFILE)
+    B = read_eigenvectors(args.BFILE)
 
     if len(A[0]) != len(B[0]):
         parser.error('{} and {} have incompatible dimension'.format(args.AFILE, args.BFILE))
@@ -50,6 +50,7 @@ def main():
     fmt = "{{:{}}} {{:{}}}   {{:<22}}  {{:8}}°".format(fmtlen, fmtlen)
 
     def getdot(a,b):
+        # FIXME: we should be getting a complex array on read, not this silly business
         ar,ai = a.transpose()
         br,bi = b.transpose()
 
@@ -117,6 +118,21 @@ def main():
 
     else: assert False, "complete switch"
 
+def read_eigenvectors(path):
+    lower = path.lower()
+    if lower.endswith('.npy'):
+        data = np.load(path)
+    elif lower.endswith('.json'):
+        data = np.array(json.load(path))
+
+    if data.ndim == 2:
+        newdata = np.zeros(data.shape + (2,))
+        newdata[..., 0] = data
+        data = newdata
+    if data.ndim != 3:
+        die('expected 2D or 3D array')
+    return data
+
 def fmt_color_by_value(s):
     return lambda x: color_by_value(x)(s.format(x))
 
@@ -169,19 +185,19 @@ def iife(f): return f()
 
 def group_keys_by_matching_value(d):
     inv = defaultdict(set)
-    for (k,v) in d.items():
+    for (k, v) in d.items():
         inv[v].add(k)
-    return [(ks,v) for v in inv]
+    return [(ks, v) for v in inv]
 
 def find_permutation(sparse_abs):
     import scipy.sparse as sparse
 
     n = len(sparse_abs)
-    sparse_abs = {s-1:{t-1:v for (t,v) in vs.items()} for (s,vs) in sparse_abs.items()}
+    sparse_abs = {s-1: {t-1: v for (t, v) in vs.items()} for (s, vs) in sparse_abs.items()}
 
     def please_coo_matrix(triples):
         i,j,x = zip(*triples)
-        return list(x),(list(i),list(j)) # REALLY, scipy, a nested tuple of arrays?
+        return list(x), (list(i), list(j)) # REALLY, scipy, a nested tuple of arrays?
 
     def ijvpairs():
         for i in range(n):
@@ -195,19 +211,19 @@ def find_permutation(sparse_abs):
 
     # permute to optimize an objective function within each block subspace
     for slc in block_slices(sparse_abs):
-        block = mat[slc,slc]
+        block = mat[slc, slc]
         # surprise surprise scipy we actually want elementwise multiplication
         block = np.array(block.todense().tolist())
 
         size = block.shape[0]
-        weights = (np.arange(size)[:,None] - np.arange(size)[None,:])**2
+        weights = (np.arange(size)[:, None] - np.arange(size)[None, :])**2
 
         objective = lambda block: (block * weights).sum()
 
         def step(data):
-            block,perm = data
-            block,perm = block.arr, perm.arr
-            bestBlock,bestPerm,bestValue = block,perm,None
+            block, perm = data
+            block, perm = block.arr, perm.arr
+            bestBlock, bestPerm, bestValue = block, perm, None
 
             # greedily perform permutations
             for i in range(size):
@@ -221,7 +237,7 @@ def find_permutation(sparse_abs):
                         bestValue = objective(block)
                         bestPerm  = perm.copy()
 
-            return CompareAsBool(bestBlock),CompareAsBool(bestPerm)
+            return CompareAsBool(bestBlock), CompareAsBool(bestPerm)
 
         _,out = fixpoint((CompareAsBool(block), CompareAsBool(perm[slc])), step)
         perm[slc] = out.arr
@@ -241,4 +257,16 @@ def fixpoint(x, f):
             return x
         x = next
 
-main()
+# ------------------------------------------------------
+
+def warn(*args, **kw):
+    print(f'{PROG}:', *args, file=sys.stderr, **kw)
+
+def die(*args, code=1):
+    warn('Fatal:', *args)
+    sys.exit(code)
+
+# ------------------------------------------------------
+
+if __name__ == '__main__':
+    main()
