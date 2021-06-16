@@ -15,9 +15,7 @@ except ImportError:
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(
-        description='Human-readible dot products between two eigenvector files'
-            ' produced by eigenvectors-alt')
+    parser = argparse.ArgumentParser(description='Human-readible dot products between two eigenvector files')
 
     parser.add_argument('AFILE', type=str)
     parser.add_argument('BFILE', type=str)
@@ -52,7 +50,7 @@ def main():
 
     def getdot(a, b):
         dot = np.vdot(a, b)
-        if np.absolute(dot) < args.threshold:
+        if np.absolute(dot)**2 < args.threshold:
             return 0
         return dot
 
