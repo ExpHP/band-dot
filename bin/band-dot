@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+
+import json
+import numpy as np
+import band_dot
+
+try:
+    from clint.textui import colored
+except ImportError:
+    class DummyColored:
+        def __getattr__(self, attr):
+            return lambda s: s
+    colored = DummyColored()
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description='Human-readible dot products between two eigenvector files')
+
+    parser.add_argument('AFILE', type=str)
+    parser.add_argument('BFILE', type=str)
+    parser.add_argument('-t', '--threshold', type=float, default=1e-3,
+        help='display threshold. (the dot products form a fairly'
+        ' sparse matrix so most elements are not worth showing)')
+    parser.add_argument('-0', action='store_true', dest='zero', help='use zero-based indexing')
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('-a', action='store_true', help='sort by a index (default)')
+    group.add_argument('-b', action='store_true', help='sort by b index')
+
+    parser.set_defaults(mode='normal')
+    parser.add_argument('-T', action='store_true', help='transpose array') # FIXME remove
+    parser.add_argument('-s', '--subspaces', dest='mode', action='store_const', const='subspaces', help='subspaces mode')
+    parser.add_argument('--find-permutation', dest='mode', action='store_const', const='permutation',
+        help='print permutation of the BFILE bands which most closely'
+        ' block diagonalizes the dot products.  (given as 1-based indices'
+        ' of the original bands, or 0-based with -0)')
+    args = parser.parse_args()
+
+    if not (args.a or args.b):
+        args.a = True
+
+    A = read_eigenvectors(args.AFILE, args.T)
+    B = read_eigenvectors(args.BFILE, args.T)
+
+    if len(A[0]) != len(B[0]):
+        parser.error('{} and {} have incompatible dimension'.format(args.AFILE, args.BFILE))
+
+    system_pair = band_dot.PairOfEigensystems.from_eigenvectors(A, B, threshold=args.threshold)
+    idx_display_offset = 0 if args.zero else 1
+
+    if args.mode == 'normal':
+        triples = system_pair.nonzero_terms()
+
+        if args.a: triples = sorted(triples, key=lambda tup: tup[0])
+        elif args.b: triples = sorted(triples, key=lambda tup: tup[1])
+        else: assert False, 'complete switch'
+
+        show_nonzero_terms(triples, idx_display_offset, nA=len(A))
+
+    elif args.mode == 'subspaces':
+        subspaces = system_pair.subspaces()
+
+        if args.a: subspaces = sorted(subspaces, key=lambda pair: min(pair[0]))
+        elif args.b: subspaces = sorted(subspaces, key=lambda pair: min(pair[1]))
+        else: assert False, 'complete switch'
+
+        show_subspaces(subspaces, idx_display_offset, system_pair=system_pair)
+
+    elif args.mode == 'permutation':
+        perm = system_pair.permutation()
+
+        print([x + idx_display_offset for x in perm])
+
+    else: assert False, "complete switch"
+
+def read_eigenvectors(path, transpose):
+    lower = path.lower()
+    if lower.endswith('.npy'):
+        data = np.load(path)
+    elif lower.endswith('.json'):
+        data = np.array(json.load(path))
+        # Allow an extra axis for complex numbers
+        if data.ndim == 3:
+            if data.shape[2] != 2:
+                die('expected JSON third axis to be real/imag')
+            data = data[:, :, 0] + 1j * data[:, :, 1]
+    else:
+        die(f'cannot determine format of {path}; try using a .npy or .json extension')
+
+    if transpose:
+        data = data.T
+    if data.ndim != 2:
+        die('expected 2D npy or 2D/3D json')
+    return data
+
+def show_nonzero_terms(nonzero_terms, idx_display_offset, nA):
+    fmtlen = len(str(nA))
+    fmt = "{{:{}}} {{:{}}}   {{:<22}}  {{:8}}°".format(fmtlen, fmtlen)
+    for ((ai, bi), dot) in nonzero_terms:
+        print(fmt.format(
+            ai + idx_display_offset,
+            bi + idx_display_offset,
+            abs(dot),
+            int(round(np.degrees(np.angle(dot))))),
+        )
+
+def show_subspaces(subspaces, idx_display_offset, system_pair):
+    for aset, bset in subspaces:
+        fmt_nocolor = lambda s: lambda *a, **k: s.format(*a, **k)
+        header_fmt = " ".join(["{:5}"] + ["{:^5}"] * len(bset))
+        body_fmts = [fmt_nocolor("{:5}")] + [fmt_color_by_value("{:<0.3f}")] * len(bset)
+        print(header_fmt.format(" ", *[ib + idx_display_offset for ib in bset]))
+        for ia in aset:
+            to_print = [ia + idx_display_offset] + [abs(system_pair.get_matrix_element(ia, ib))**2 for ib in bset]
+            print(*(f(x) for (f, x) in zip(body_fmts, to_print)))
+        print()
+
+def fmt_color_by_value(s):
+    return lambda x: color_by_value(x)(s.format(x))
+
+def color_by_value(x):
+    x = abs(float(x))
+    if x < 0.30: return colored.blue
+    if x < 0.60: return colored.cyan
+    if x < 0.80: return colored.yellow
+    return colored.white
+
+# ------------------------------------------------------
+
+def warn(*args, **kw):
+    print(f'{PROG}:', *args, file=sys.stderr, **kw)
+
+def die(*args, code=1):
+    warn('Fatal:', *args)
+    sys.exit(code)
+
+# ------------------------------------------------------
+
+if __name__ == '__main__':
+    main()
