@@ -4,6 +4,7 @@ _PAIR_OF_EIGENSYSTEMS__CAN_BREAK_MY_CODE = object()
 
 from collections import defaultdict
 import numpy as np
+import warnings
 
 from . import _private
 
@@ -104,6 +105,16 @@ class PairOfEigensystems:
         yield from _private.subspaces(self._sparse_dots)
 
     def permutation(self):
+        ''' deprecated '''
+        warnings.warn("deprecated; use permutation_2_to_1", DeprecationWarning)
+        return self.permutation_2_to_1()
+
+    def inverse_permutation(self):
+        ''' deprecated '''
+        warnings.warn("deprecated; use permutation_1_to_2", DeprecationWarning)
+        return self.permutation_1_to_2()
+
+    def permutation_2_to_1(self):
         '''
         Compute an integer 1D array that permutes vectors2 to resemble vectors1.
 
@@ -112,11 +123,11 @@ class PairOfEigensystems:
         '''
         return _private.find_permutation(self._sparse_dots)
 
-    def inverse_permutation(self):
+    def permutation_1_to_2(self):
         '''
-        Compute an integer 1D array that permutes vectors1 to resemble vectors2.
+        Compute an integer 1D array that permutes vectors2 to resemble vectors1.
 
-        That is, ``vectors1[perm]`` will have its rows ordered to match the rows of ``vector2`` as
+        That is, ``vectors2[perm]`` will have its rows ordered to match the rows of ``vector1`` as
         closely as possible.
         '''
-        return np.argsort(self.permutation())
+        return _private.find_permutation(self._sparse_dots)
