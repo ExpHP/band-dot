@@ -11,4 +11,5 @@ setup(
     url='https://github.com/ExpHP/band-dot/',
     packages=['band_dot'],
     requires=['numpy'],
+    scripts=['bin/band-dot'],
 )
