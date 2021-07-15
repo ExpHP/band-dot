@@ -38,7 +38,6 @@ optional arguments:
   -0                    use zero-based indexing
   -a                    sort by a index (default)
   -b                    sort by b index
-  -T                    transpose array
   -s, --subspaces       subspaces mode
   --find-permutation    print permutation of the BFILE bands which most
                         closely block diagonalizes the dot products. (given as
