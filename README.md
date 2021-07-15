@@ -8,6 +8,45 @@ It was written a while back in an attempt to try and uncross bands in an extreme
 
 ...in the end it didn't work fantastically well for *that* particular purpose, but it *does* have a variety of uses, and is just generally useful to have when working on large sets of bands.
 
+## Installation
+
+```
+git clone https://github.com/ExpHP/band-dot
+cd band-dot
+python3 -m pip install .
+```
+
+This installs the following command:
+
+```
+$ band-dot --help
+usage: band-dot [-h] [-t THRESHOLD] [-0] [-a | -b] [-T] [-s]
+                [--find-permutation]
+                AFILE BFILE
+
+Human-readible dot products between two eigenvector files
+
+positional arguments:
+  AFILE
+  BFILE
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -t THRESHOLD, --threshold THRESHOLD
+                        display threshold. (the dot products form a fairly
+                        sparse matrix so most elements are not worth showing)
+  -0                    use zero-based indexing
+  -a                    sort by a index (default)
+  -b                    sort by b index
+  -T                    transpose array
+  -s, --subspaces       subspaces mode
+  --find-permutation    print permutation of the BFILE bands which most
+                        closely block diagonalizes the dot products. (given as
+                        1-based indices of the original bands, or 0-based with
+                        -0)
+```
+
+
 ## Input
 
 You will require two matrices (as `.npy` files), each containing a basis of eigenvectors.  **Each row of the array should be an eigenvector;** this is the transpose of what one might typically call the "eigenvector matrix."
