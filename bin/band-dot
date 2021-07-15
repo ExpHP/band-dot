@@ -28,7 +28,6 @@ def main():
     group.add_argument('-b', action='store_true', help='sort by b index')
 
     parser.set_defaults(mode='normal')
-    parser.add_argument('-T', action='store_true', help='transpose array') # FIXME remove
     parser.add_argument('-s', '--subspaces', dest='mode', action='store_const', const='subspaces', help='subspaces mode')
     parser.add_argument('--find-permutation', dest='mode', action='store_const', const='permutation',
         help='print permutation of the BFILE bands which most closely'
@@ -39,8 +38,8 @@ def main():
     if not (args.a or args.b):
         args.a = True
 
-    A = read_eigenvectors(args.AFILE, args.T)
-    B = read_eigenvectors(args.BFILE, args.T)
+    A = read_eigenvectors(args.AFILE)
+    B = read_eigenvectors(args.BFILE)
 
     if len(A[0]) != len(B[0]):
         parser.error('{} and {} have incompatible dimension'.format(args.AFILE, args.BFILE))
@@ -73,7 +72,7 @@ def main():
 
     else: assert False, "complete switch"
 
-def read_eigenvectors(path, transpose):
+def read_eigenvectors(path):
     lower = path.lower()
     if lower.endswith('.npy'):
         data = np.load(path)
@@ -87,8 +86,6 @@ def read_eigenvectors(path, transpose):
     else:
         die(f'cannot determine format of {path}; try using a .npy or .json extension')
 
-    if transpose:
-        data = data.T
     if data.ndim != 2:
         die('expected 2D npy or 2D/3D json')
     return data
